@@ -438,7 +438,7 @@ function transferNote(from,to,d,deferRender=false,undo=false){if((busy&&!deferRe
 document.addEventListener('click',e=>{const el=e.target.closest('.note[data-owner]');if(!canActLocally()||!el||!cashUI||(busy&&!noteTransferRunning))return;const from=Number(el.dataset.owner),d=Number(el.dataset.value),to=from===cashUI.from?cashUI.to:cashUI.from;if(![cashUI.from,cashUI.to].includes(from))return;enqueueNoteTransfer(from,to,d,el)});
 
 
-let noteTransferRunning=false,officialPaymentBatch=false;
+let noteTransferRunning=false,officialPaymentBatch=false,bankExchangeBatch=false;
 function canCompleteOtherPayment(){if(!cashUI||S.purchase||S.exchange||cashUI.from===S.turn)return false;const v=account(cashUI.from,cashUI.to);return !!v&&v.target===v.net&&paymentPairInvolved(cashUI.from,cashUI.to)}
 function completeOtherPayment(){if(busy||!canCompleteOtherPayment())return;advanceSettledCash();renderWallets();save();}
 function advanceSettledCash(){if(canCompleteOtherPayment())cashUI=null;}
@@ -465,7 +465,7 @@ async function animateNoteTransfer({from,to,d,source,dropPoint,sourceOrigin,prev
  const ghost=previewFlight||source.cloneNode(true),fromBefore=noteLayout(from),toBefore=noteLayout(to),wasOpen=unfolded.has(to);
  if(to!==-1)unfolded.add(to);
  const official=!undo&&isOfficialTransfer(from,to);if(!transferNote(from,to,d,true,undo)){if(!wasOpen)unfolded.delete(to);return}
- officialPaymentBatch=officialPaymentBatch||official;noteTransferRunning=true;busy=true;document.body.classList.add('money-in-flight');
+ bankExchangeBatch=bankExchangeBatch||!!S.exchange&&(from===-1||to===-1);officialPaymentBatch=officialPaymentBatch||official;noteTransferRunning=true;busy=true;document.body.classList.add('money-in-flight');
  let arrival=null;
  if(from!==-1){source.remove();if(!sourceArea.querySelector('.note-grid>.note'))sourceArea.innerHTML=walletContents(from)}
  if(to===-1)arrival=bankNote(to,d);
@@ -489,7 +489,7 @@ async function animateNoteTransfer({from,to,d,source,dropPoint,sourceOrigin,prev
   if(to===-1&&arrival.isConnected)arrival.animate([{transform:'translateY(-3px)'},{transform:'translateY(0)'}],{duration:120});
  }finally{
   ghost.remove();if(to!==-1)arrival?.classList.remove('note-arriving');activeNoteTransfers.delete(transfer);
-  if(!activeNoteTransfers.size){noteTransferRunning=false;busy=false;document.body.classList.remove('money-in-flight');const v=cashUI&&account(cashUI.from,cashUI.to),settled=!undo&&!undoQueueRunning&&!S.purchase&&cashUI&&!S.exchange&&officialPaymentBatch&&v&&v.target===v.net;officialPaymentBatch=false;if(settled){S.manualCash=true;closeCash();render(true)}else render()}
+  if(!activeNoteTransfers.size){noteTransferRunning=false;busy=false;document.body.classList.remove('money-in-flight');const v=cashUI&&account(cashUI.from,cashUI.to),settled=!undo&&!undoQueueRunning&&!S.purchase&&cashUI&&!S.exchange&&!bankExchangeBatch&&officialPaymentBatch&&v&&v.target===v.net;officialPaymentBatch=false;bankExchangeBatch=false;if(settled){S.manualCash=true;closeCash();render(true)}else render()}
  }
 }
 for(const type of ['pointerdown','click','dblclick','keydown','change'])document.addEventListener(type,e=>{if(noteTransferRunning&&!e.target.closest?.('.wallet-money .note[data-owner],[onclick="undoVoluntary()"]')){e.preventDefault();e.stopImmediatePropagation()}},true);
@@ -522,7 +522,7 @@ function playerDueText(){return ''}
 function receiverDeedsHTML(id){if(id===-1)return '';const lands=owns(S.players[id]);return '<div class="deed-grid receiver-deeds">'+lands.map(t=>'<button class="deed-card" data-tile="'+t.id+'" onclick="selectTile('+t.id+',true)">'+tileArt(t)+'<b>'+esc(t.name)+'</b>'+(t.type==='land'?'<small>'+(S.props[t.id].level===5?'旅馆':S.props[t.id].level+' 幢房屋')+'</small>':'')+'</button>').join('')+'</div>'}
 function previewPurchase(){if(S.phase!=='choice')return;const info=document.getElementById('property-float');if(!info.hidden&&Number(info.dataset.tile)===player().pos&&info.dataset.preview==='true'){hideProperty();return;}openProperty(player().pos,true)}
 function canUndoNote(t){return !!t&&!!cashUI&&pairKey(cashUI.from,cashUI.to)===pairKey(t.from,t.to)}
-function undoControls(){const t=S.undoNotes?.at(-1);if(!canUndoNote(t)||!canActLocally())return '<button style="visibility:hidden;pointer-events:none" disabled aria-hidden="true" tabindex="-1">撤回</button>';return '<button onclick="undoVoluntary()" '+((busy&&!noteTransferRunning&&!undoQueueRunning)||t.to!==-1&&!S.players[t.to]?.wallet[t.d]?'disabled':'')+'>撤回</button>'}
+function undoControls(){const t=S.undoNotes?.findLast(canUndoNote);if(!canUndoNote(t)||!canActLocally())return '<button style="visibility:hidden;pointer-events:none" disabled aria-hidden="true" tabindex="-1">撤回</button>';return '<button onclick="undoVoluntary()" '+((busy&&!noteTransferRunning&&!undoQueueRunning)||t.to!==-1&&!S.players[t.to]?.wallet[t.d]?'disabled':'')+'>撤回</button>'}
 async function undoVoluntary(){
  if(!cashUI||!canActLocally()||(busy&&!noteTransferRunning&&!undoQueueRunning))return;
  const t=S.undoNotes?.at(-1);if(!canUndoNote(t)||t.to!==-1&&!S.players[t.to]?.wallet[t.d])return;
